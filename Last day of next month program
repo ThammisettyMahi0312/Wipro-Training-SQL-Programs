@@ -1,0 +1,2 @@
+-- Get the last day of the next month from today
+SELECT EOMONTH(GETDATE(), 1) AS LastDayOfNextMonth;
