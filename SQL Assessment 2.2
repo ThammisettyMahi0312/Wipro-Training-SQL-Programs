@@ -1,0 +1,237 @@
+
+use EmpSample_#OK
+go
+SELECT Department, SUM(PresentBasic) AS TotalPresentBasic
+FROM dbo.EmployeeMaster
+GROUP BY Department
+HAVING SUM(PresentBasic) > 30000
+ORDER BY Department;
+
+-- 2. Max, Min, Average age of employees by ServiceType, ServiceStatus, and Centre (Years and Months)
+SELECT
+  Centre,
+  ServiceType,
+  ServiceStatus,
+  MAX(DATEDIFF(YEAR, DOB, GETDATE())) AS MaxAgeYears,
+  MIN(DATEDIFF(YEAR, DOB, GETDATE())) AS MinAgeYears,
+  AVG(DATEDIFF(DAY, DOB, GETDATE()))/365.0 AS AvgAgeYears,
+  -- For months, approximate by total days / 30
+  AVG(DATEDIFF(DAY, DOB, GETDATE()))/30.0 AS AvgAgeMonths
+FROM dbo.EmployeeMaster
+GROUP BY Centre, ServiceType, ServiceStatus;
+
+-- 3. Max, Min, Average service (years and months) by ServiceType, ServiceStatus, Centre
+SELECT
+  Centre,
+  ServiceType,
+  ServiceStatus,
+  MAX(DATEDIFF(DAY, DOJ, GETDATE()))/365.0 AS MaxServiceYears,
+  MIN(DATEDIFF(DAY, DOJ, GETDATE()))/365.0 AS MinServiceYears,
+  AVG(DATEDIFF(DAY, DOJ, GETDATE()))/365.0 AS AvgServiceYears,
+  -- Months approx
+  AVG(DATEDIFF(DAY, DOJ, GETDATE()))/30.0 AS AvgServiceMonths
+FROM dbo.EmployeeMaster
+GROUP BY Centre, ServiceType, ServiceStatus;
+
+-- 4. Departments where total salary > 3 * average salary
+SELECT Department
+FROM dbo.EmployeeMaster
+GROUP BY Department
+HAVING SUM(PresentBasic) > 3 * AVG(PresentBasic);
+
+-- 5. Departments where total salary > 2 * average salary and max basic >= 3 * min basic
+SELECT Department
+FROM dbo.EmployeeMaster
+GROUP BY Department
+HAVING SUM(PresentBasic) > 2 * AVG(PresentBasic)
+   AND MAX(PresentBasic) >= 3 * MIN(PresentBasic);
+
+-- 6. Centers where max length of employee name is twice the min length
+SELECT Centre
+FROM dbo.EmployeeMaster
+GROUP BY Centre
+HAVING MAX(LEN(EmpName)) >= 2 * MIN(LEN(EmpName));
+
+-- 7. Max, Min, Average service in milliseconds by ServiceType, ServiceStatus, Centre
+SELECT
+  Centre,
+  ServiceType,
+  ServiceStatus,
+  MAX(DATEDIFF(MILLISECOND, DOJ, GETDATE())) AS MaxServiceMillis,
+  MIN(DATEDIFF(MILLISECOND, DOJ, GETDATE())) AS MinServiceMillis,
+  AVG(CAST(DATEDIFF(MILLISECOND, DOJ, GETDATE()) AS BIGINT)) AS AvgServiceMillis
+FROM dbo.EmployeeMaster
+GROUP BY Centre, ServiceType, ServiceStatus;
+
+-- 8. Employees with Leading or Trailing spaces in EmpName
+SELECT *
+FROM dbo.EmployeeMaster
+WHERE EmpName LIKE ' %' OR EmpName LIKE '% ';
+
+-- 9. Employees with more than one space between parts of the name
+SELECT *
+FROM dbo.EmployeeMaster
+WHERE EmpName LIKE '%  %';  -- two spaces in a row
+
+-- 10. Display employee names with trimmed spaces, single spaces only, and remove dots
+SELECT
+  EmpID,
+  -- Remove leading/trailing spaces, replace multiple spaces with single space, remove dots
+  LTRIM(RTRIM(
+    REPLACE(
+      REPLACE(
+        REPLACE(EmpName, '.', ''),  -- remove '.'
+      '  ', ' '),                  -- replace double spaces with single space (run multiple times if needed)
+    '  ', ' ')
+  )) AS CleanEmpName
+FROM dbo.EmployeeMaster;
+
+-- 11. Max number of words in all employee names (assuming words separated by space)
+SELECT MAX(LEN(CleanName) - LEN(REPLACE(CleanName, ' ', '')) + 1) AS MaxWords
+FROM (
+  SELECT
+    LTRIM(RTRIM(
+      REPLACE(
+        REPLACE(
+          REPLACE(EmpName, '.', ''),
+        '  ', ' '),
+      '  ', ' ')
+    )) AS CleanName
+  FROM dbo.EmployeeMaster
+) AS CleanNames;
+
+-- 12. Employees whose name starts and ends with same character (case-insensitive)
+SELECT *
+FROM dbo.EmployeeMaster
+WHERE LOWER(LEFT(EmpName, 1)) = LOWER(RIGHT(EmpName, 1));
+
+-- 13. Employees whose first and second name start with same character
+SELECT *
+FROM dbo.EmployeeMaster
+WHERE
+  -- Get first character of first name
+  LOWER(LEFT(EmpName, 1)) = LOWER(
+    SUBSTRING(
+      EmpName,
+      CHARINDEX(' ', EmpName) + 1,
+      1
+    )
+  )
+  AND CHARINDEX(' ', EmpName) > 0;
+
+-- 14. Employees whose all words start with same character
+WITH SplitNames AS (
+  SELECT EmpID, EmpName,
+    STRING_SPLIT(EmpName, ' ') AS Word
+  FROM dbo.EmployeeMaster
+),
+FirstChars AS (
+  SELECT EmpID, EmpName,
+         LOWER(LEFT(value,1)) AS FirstChar
+  FROM SplitNames
+)
+SELECT EmpID, EmpName
+FROM FirstChars
+GROUP BY EmpID, EmpName
+HAVING COUNT(DISTINCT FirstChar) = 1;
+
+-- 15. Employees where any word (excluding initials, assuming initials = 1 char) starts and ends with same character
+SELECT DISTINCT EmpID, EmpName
+FROM dbo.EmployeeMaster
+CROSS APPLY STRING_SPLIT(EmpName, ' ') AS Words
+WHERE LEN(Words.value) > 1 -- Exclude initials
+  AND LOWER(LEFT(Words.value, 1)) = LOWER(RIGHT(Words.value, 1));
+
+-- 16. Employees with PresentBasic rounded to nearest 100
+
+-- 16.1 Using ROUND
+SELECT EmpID, EmpName, PresentBasic
+FROM dbo.EmployeeMaster
+WHERE PresentBasic = ROUND(PresentBasic, -2);
+
+-- 16.2 Using FLOOR
+SELECT EmpID, EmpName, PresentBasic
+FROM dbo.EmployeeMaster
+WHERE PresentBasic = FLOOR(PresentBasic / 100.0) * 100;
+
+-- 16.3 Using MOD (%)
+SELECT EmpID, EmpName, PresentBasic
+FROM dbo.EmployeeMaster
+WHERE PresentBasic % 100 = 0;
+
+-- 16.4 Using CEILING
+SELECT EmpID, EmpName, PresentBasic
+FROM dbo.EmployeeMaster
+WHERE PresentBasic = CEILING(PresentBasic / 100.0) * 100;
+
+-- 17. Departments where all employees have PresentBasic rounded to 100
+SELECT Department
+FROM dbo.EmployeeMaster
+GROUP BY Department
+HAVING COUNT(*) = SUM(CASE WHEN PresentBasic % 100 = 0 THEN 1 ELSE 0 END);
+
+-- 18. Departments where no employee has PresentBasic rounded to 100
+SELECT Department
+FROM dbo.EmployeeMaster
+GROUP BY Department
+HAVING SUM(CASE WHEN PresentBasic % 100 = 0 THEN 1 ELSE 0 END) = 0;
+
+-- 19. Eligibility date for bonus and age on payment date with detailed date info
+SELECT
+  EmpID,
+  EmpName,
+  DOJ,
+  DOB,
+  DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ))) AS EligibilityDate,
+  DATEDIFF(YEAR, DOB, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))) -
+    CASE WHEN DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)) < DATEADD(YEAR, DATEDIFF(YEAR, DOB, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))), DOB)
+         THEN 1 ELSE 0 END AS AgeYears,
+  DATENAME(WEEKDAY, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))) AS WeekdayName,
+  DATEPART(WEEK, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))) AS WeekOfYear,
+  DATEPART(DAYOFYEAR, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))) AS DayOfYear,
+  ((DATEPART(DAY, DATEADD(DAY, 15, DATEADD(MONTH, 3, DATEADD(YEAR, 1, DOJ)))) - 1) / 7) + 1 AS WeekOfMonth
+FROM dbo.EmployeeMaster
+WHERE DOJ IS NOT NULL AND DOB IS NOT NULL;
+
+-- 20. Employees eligible for bonus based on service type, employee type, service left, retirement age
+SELECT EmpID, EmpName, ServiceType, EmployeeType, DOB, DOJ,
+       DATEDIFF(YEAR, DOJ, GETDATE()) AS ServiceYears,
+       60 - DATEDIFF(YEAR, DOB, GETDATE()) AS YearsLeft -- Example, retirement age varies below
+FROM dbo.EmployeeMaster
+WHERE
+(
+  (ServiceType = 1 AND EmployeeType = 1 AND DATEDIFF(YEAR, DOJ, GETDATE()) >= 10 AND (60 - DATEDIFF(YEAR, DOB, GETDATE())) >= 15)
+  OR (ServiceType = 1 AND EmployeeType = 2 AND DATEDIFF(YEAR, DOJ, GETDATE()) >= 12 AND (55 - DATEDIFF(YEAR, DOB, GETDATE())) >= 14)
+  OR (ServiceType = 1 AND EmployeeType = 3 AND DATEDIFF(YEAR, DOJ, GETDATE()) >= 12 AND (55 - DATEDIFF(YEAR, DOB, GETDATE())) >= 12)
+  OR (ServiceType IN (2, 3, 4) AND DATEDIFF(YEAR, DOJ, GETDATE()) >= 15 AND (65 - DATEDIFF(YEAR, DOB, GETDATE())) >= 20)
+);
+
+-- 21. Display current date in all possible formats using CONVERT
+SELECT 
+  CONVERT(varchar, GETDATE(), 0) AS Format_0,
+  CONVERT(varchar, GETDATE(), 1) AS Format_1,
+  CONVERT(varchar, GETDATE(), 2) AS Format_2,
+  CONVERT(varchar, GETDATE(), 3) AS Format_3,
+  CONVERT(varchar, GETDATE(), 4) AS Format_4,
+  CONVERT(varchar, GETDATE(), 5) AS Format_5,
+  CONVERT(varchar, GETDATE(), 6) AS Format_6,
+  CONVERT(varchar, GETDATE(), 7) AS Format_7,
+  CONVERT(varchar, GETDATE(), 8) AS Format_8,
+  CONVERT(varchar, GETDATE(), 9) AS Format_9,
+  CONVERT(varchar, GETDATE(), 10) AS Format_10,
+  CONVERT(varchar, GETDATE(), 11) AS Format_11,
+  CONVERT(varchar, GETDATE(), 12) AS Format_12,
+  CONVERT(varchar, GETDATE(), 13) AS Format_13,
+  CONVERT(varchar, GETDATE(), 14) AS Format_14,
+  CONVERT(varchar, GETDATE(), 20) AS Format_20,
+  CONVERT(varchar, GETDATE(), 21) AS Format_21;
+
+-- 22. Employees with net payment less than actual basic from TblPayEmployeeParamDetails
+SELECT DISTINCT e.EmpID, e.EmpName, p.ParamCode, p.NetPayment, p.ActualBasic
+FROM dbo.EmployeeMaster e
+JOIN dbo.TblPayEmployeeParamDetails p ON e.EmpID = p.EmpID
+WHERE p.NetPayment < p.ActualBasic;
+
+-- ===============================
+-- END OF EXERCISE 2 COMPLETE SCRIPT
+-- ===============================
