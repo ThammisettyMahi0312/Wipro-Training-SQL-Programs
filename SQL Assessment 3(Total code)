@@ -1,0 +1,206 @@
+-- ============================================
+-- STEP 1: Setup Employee & Payment Tables
+-- ============================================
+
+DROP TABLE IF EXISTS PAYMENT;
+DROP TABLE IF EXISTS EMPLOYEE;
+
+CREATE TABLE EMPLOYEE (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(100)
+);
+
+CREATE TABLE PAYMENT (
+    emp_id INT FOREIGN KEY REFERENCES EMPLOYEE(emp_id),
+    BASIC DECIMAL(10,2),
+    VDA BIT,
+    HRA BIT,
+    NHF BIT,
+    LWW BIT,
+    PF BIT,
+    loan_amt DECIMAL(10,2),
+    deduction_amt DECIMAL(10,2),
+    gross_pay DECIMAL(10,2)
+);
+
+-- Sample Data
+INSERT INTO EMPLOYEE VALUES 
+(1, 'Alice'), 
+(2, 'Bob'), 
+(3, 'Carol');
+
+INSERT INTO PAYMENT VALUES
+(1, 10000, 1, 1, 1, 1, 1, 500, 800, 12000),
+(2, 10000, 1, 0, 1, 1, 0, 0, 500, 11000),
+(3, 10000, 0, 1, 1, 1, 1, 200, 400, 11500);
+
+
+-- ============================================
+-- STEP 2: QUERIES 1–5 (Using Set Operators)
+-- ============================================
+
+-- 1. VDA but not HRA
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.VDA = 1
+EXCEPT
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.HRA = 1;
+
+-- 2. VDA and HRA
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.VDA = 1
+INTERSECT
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.HRA = 1;
+
+-- 3. VDA or HRA or both
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.VDA = 1
+UNION
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.HRA = 1;
+
+-- 4. VDA or HRA only (but not both)
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE (p.VDA = 1 AND p.HRA = 0)
+   OR (p.HRA = 1 AND p.VDA = 0);
+
+-- 5. Paid VDA, NHF, LWW but NOT PF
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.VDA = 1 AND p.NHF = 1 AND p.LWW = 1
+EXCEPT
+SELECT e.emp_id, e.emp_name
+FROM EMPLOYEE e
+JOIN PAYMENT p ON e.emp_id = p.emp_id
+WHERE p.PF = 1;
+
+
+-- ============================================
+-- STEP 3: QUERIES 6–9 (No Set Ops, Joins, Subqueries)
+-- ============================================
+
+-- 6. Not paid one or more of PF, HRA, VDA
+SELECT p.emp_id, e.emp_name
+FROM PAYMENT p
+JOIN EMPLOYEE e ON e.emp_id = p.emp_id
+WHERE PF = 0 OR HRA = 0 OR VDA = 0;
+
+-- 7. Sum of BASIC + VDA + HRA where PF is paid
+-- (Assume VDA and HRA amounts are included in BASIC or replaceable)
+SELECT p.emp_id, e.emp_name,
+       p.BASIC + 
+       CASE WHEN p.VDA = 1 THEN 2000 ELSE 0 END + 
+       CASE WHEN p.HRA = 1 THEN 1500 ELSE 0 END AS total_salary
+FROM PAYMENT p
+JOIN EMPLOYEE e ON e.emp_id = p.emp_id
+WHERE p.PF = 1;
+
+-- 8. % of gross pay paid toward loan
+SELECT p.emp_id, e.emp_name,
+       CASE WHEN p.gross_pay > 0 AND p.loan_amt > 0
+            THEN CAST(p.loan_amt * 100.0 / p.gross_pay AS DECIMAL(5,2))
+            ELSE NULL END AS loan_pct
+FROM PAYMENT p
+JOIN EMPLOYEE e ON e.emp_id = p.emp_id
+WHERE p.loan_amt > 0;
+
+-- 9. % of gross pay to deductions
+SELECT p.emp_id, e.emp_name,
+       CASE WHEN p.gross_pay > 0
+            THEN CAST(p.deduction_amt * 100.0 / p.gross_pay AS DECIMAL(5,2))
+            ELSE NULL END AS deduction_pct
+FROM PAYMENT p
+JOIN EMPLOYEE e ON e.emp_id = p.emp_id;
+
+
+-- ============================================
+-- STEP 4: DDL for Academic History (Q10)
+-- ============================================
+
+-- Drop in reverse FK order
+DROP TABLE IF EXISTS Student_Academic_History;
+DROP TABLE IF EXISTS Student_School;
+DROP TABLE IF EXISTS Students;
+DROP TABLE IF EXISTS Grades;
+DROP TABLE IF EXISTS Schools;
+DROP TABLE IF EXISTS RevenueDivisions;
+DROP TABLE IF EXISTS Districts;
+DROP TABLE IF EXISTS States;
+
+-- States
+CREATE TABLE States (
+  state_id    INT IDENTITY PRIMARY KEY,
+  state_name  VARCHAR(100) NOT NULL
+);
+
+-- Districts
+CREATE TABLE Districts (
+  district_id INT IDENTITY PRIMARY KEY,
+  state_id    INT NOT NULL FOREIGN KEY REFERENCES States(state_id),
+  district_name VARCHAR(100) NOT NULL
+);
+
+-- Revenue Divisions
+CREATE TABLE RevenueDivisions (
+  revdiv_id   INT IDENTITY PRIMARY KEY,
+  district_id INT NOT NULL FOREIGN KEY REFERENCES Districts(district_id),
+  revdiv_name VARCHAR(100) NOT NULL
+);
+
+-- Schools
+CREATE TABLE Schools (
+  school_id   INT IDENTITY PRIMARY KEY,
+  revdiv_id   INT NOT NULL FOREIGN KEY REFERENCES RevenueDivisions(revdiv_id),
+  school_name VARCHAR(200) NOT NULL,
+  address     VARCHAR(300) NULL
+);
+
+-- Grades
+CREATE TABLE Grades (
+  grade_id    INT IDENTITY PRIMARY KEY,
+  grade_level VARCHAR(20) NOT NULL  -- e.g. 'KG', 'Grade 1', ..., 'Grade 12'
+);
+
+-- Students
+CREATE TABLE Students (
+  student_id  INT IDENTITY PRIMARY KEY,
+  first_name  VARCHAR(100) NOT NULL,
+  last_name   VARCHAR(100) NOT NULL,
+  dob         DATE NOT NULL,
+  gender      VARCHAR(10)
+);
+
+-- Student_School (mapping student to school)
+CREATE TABLE Student_School (
+  stud_school_id INT IDENTITY PRIMARY KEY,
+  student_id     INT NOT NULL FOREIGN KEY REFERENCES Students(student_id),
+  school_id      INT NOT NULL FOREIGN KEY REFERENCES Schools(school_id),
+  from_date      DATE NOT NULL,
+  to_date        DATE NULL
+);
+
+-- Academic History (granular grade record)
+CREATE TABLE Student_Academic_History (
+  acad_id        INT IDENTITY PRIMARY KEY,
+  stud_school_id INT NOT NULL FOREIGN KEY REFERENCES Student_School(stud_school_id),
+  grade_id       INT NOT NULL FOREIGN KEY REFERENCES Grades(grade_id),
+  academic_from  DATE NOT NULL,
+  academic_to    DATE NULL,
+  remarks        VARCHAR(500)
+);
