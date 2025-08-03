@@ -1,0 +1,9 @@
+DECLARE @FullName VARCHAR(100) = 'Venkata Narayana';
+
+-- Get position of space between first and last name
+DECLARE @spacePos INT = CHARINDEX(' ', @FullName);
+
+-- Extract first and last name
+SELECT 
+    SUBSTRING(@FullName, 1, @spacePos - 1) AS FirstName,
+    SUBSTRING(@FullName, @spacePos + 1, LEN(@FullName)) AS LastName;
