@@ -1,0 +1,6 @@
+DECLARE @inputString VARCHAR(100) = 'Hello World Welcome to SQL';
+DECLARE @searchChar CHAR(1) = 'o';
+
+-- Reverse the string to find the last occurrence
+SELECT 
+    LEN(@inputString) - CHARINDEX(@searchChar, REVERSE(@inputString)) + 1 AS LastOccurrencePosition;
