@@ -1,0 +1,179 @@
+-- 1. Employees paid VDA but NOT HRA (Using set operators)
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'VDA'
+
+EXCEPT
+
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'HRA';
+
+-- 2. Employees paid BOTH VDA and HRA (Using set operators)
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'VDA'
+
+INTERSECT
+
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'HRA';
+
+-- 3. Employees paid VDA OR HRA OR BOTH (Using UNION)
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'VDA'
+
+UNION
+
+SELECT EmpID, PaymentID, ParamCode, Amount
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'HRA';
+
+-- 4. Employees paid VDA or HRA ONLY (i.e., paid VDA or HRA but NOT both)
+
+-- Get all paid VDA or HRA
+SELECT EmpID, PaymentID
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode IN ('VDA', 'HRA')
+GROUP BY EmpID, PaymentID
+HAVING COUNT(DISTINCT ParamCode) = 1;
+
+-- 5. Employees paid VDA, NHF, LWW but NOT PF
+
+-- Get employees paid VDA, NHF, LWW
+SELECT EmpID, PaymentID
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode IN ('VDA', 'NHF', 'LWW')
+GROUP BY EmpID, PaymentID
+HAVING COUNT(DISTINCT ParamCode) = 3
+
+EXCEPT
+
+SELECT EmpID, PaymentID
+FROM dbo.TblPayEmployeeParamDetails
+WHERE ParamCode = 'PF';
+
+-- ===========================================
+-- Below queries do NOT use set operators
+-- ===========================================
+
+-- 6. Employees NOT paid one or more of PF, HRA, VDA
+
+SELECT DISTINCT EmpID, PaymentID
+FROM dbo.TblPayEmployeeParamDetails t
+WHERE EXISTS (
+  SELECT 1
+  FROM (VALUES ('PF'), ('HRA'), ('VDA')) AS v(ParamCode)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.TblPayEmployeeParamDetails t2 
+    WHERE t2.EmpID = t.EmpID AND t2.PaymentID = t.PaymentID AND t2.ParamCode = v.ParamCode
+  )
+);
+
+-- 7. Sum of BASIC + VDA + HRA for employee payments where PF was paid (No subqueries, joins, or set operators)
+
+SELECT 
+  EmpID,
+  PaymentID,
+  SUM(CASE WHEN ParamCode IN ('BASIC', 'VDA', 'HRA') THEN Amount ELSE 0 END) AS SumBasicVdaHra
+FROM dbo.TblPayEmployeeParamDetails
+GROUP BY EmpID, PaymentID
+HAVING SUM(CASE WHEN ParamCode = 'PF' THEN 1 ELSE 0 END) > 0;
+
+-- 8. % of gross pay paid towards loan per payment (only if loan paid)
+
+SELECT 
+  EmpID,
+  PaymentID,
+  CASE 
+    WHEN SUM(CASE WHEN ParamCode = 'GrossPay' THEN Amount ELSE 0 END) > 0 
+    THEN CAST(SUM(CASE WHEN ParamCode = 'Loan' THEN Amount ELSE 0 END) * 100.0 / SUM(CASE WHEN ParamCode = 'GrossPay' THEN Amount ELSE 0 END) AS DECIMAL(5,2))
+    ELSE NULL
+  END AS LoanPercentage
+FROM dbo.TblPayEmployeeParamDetails
+GROUP BY EmpID, PaymentID
+HAVING SUM(CASE WHEN ParamCode = 'Loan' THEN Amount ELSE 0 END) > 0;
+
+-- 9. % of gross pay paid towards deductions per payment
+
+SELECT 
+  EmpID,
+  PaymentID,
+  CASE 
+    WHEN SUM(CASE WHEN ParamCode = 'GrossPay' THEN Amount ELSE 0 END) > 0
+    THEN CAST(SUM(CASE WHEN ParamCode = 'Deduction' THEN Amount ELSE 0 END) * 100.0 / SUM(CASE WHEN ParamCode = 'GrossPay' THEN Amount ELSE 0 END) AS DECIMAL(5,2))
+    ELSE NULL
+  END AS DeductionPercentage
+FROM dbo.TblPayEmployeeParamDetails
+GROUP BY EmpID, PaymentID;
+
+-- 10. DDL for Academic History of Students
+
+-- States table
+CREATE TABLE States (
+    StateID INT PRIMARY KEY IDENTITY(1,1),
+    StateName NVARCHAR(100) NOT NULL
+);
+
+-- Districts table
+CREATE TABLE Districts (
+    DistrictID INT PRIMARY KEY IDENTITY(1,1),
+    DistrictName NVARCHAR(100) NOT NULL,
+    StateID INT NOT NULL,
+    FOREIGN KEY (StateID) REFERENCES States(StateID)
+);
+
+-- RevenueDivisions table
+CREATE TABLE RevenueDivisions (
+    RevenueDivisionID INT PRIMARY KEY IDENTITY(1,1),
+    RevenueDivisionName NVARCHAR(100) NOT NULL,
+    DistrictID INT NOT NULL,
+    FOREIGN KEY (DistrictID) REFERENCES Districts(DistrictID)
+);
+
+-- Schools table
+CREATE TABLE Schools (
+    SchoolID INT PRIMARY KEY IDENTITY(1,1),
+    SchoolName NVARCHAR(150) NOT NULL,
+    RevenueDivisionID INT NOT NULL,
+    Street NVARCHAR(200) NULL,
+    Village NVARCHAR(200) NULL,
+    FOREIGN KEY (RevenueDivisionID) REFERENCES RevenueDivisions(RevenueDivisionID)
+);
+
+-- Grades table
+CREATE TABLE Grades (
+    GradeID INT PRIMARY KEY IDENTITY(1,1),
+    GradeName NVARCHAR(50) NOT NULL -- e.g. 'Kindergarten', 'Grade 1', ... 'Grade 12'
+);
+
+-- Students table
+CREATE TABLE Students (
+    StudentID INT PRIMARY KEY IDENTITY(1,1),
+    FirstName NVARCHAR(100) NOT NULL,
+    LastName NVARCHAR(100) NOT NULL,
+    DOB DATE NOT NULL
+);
+
+-- Student_School table (tracks student enrollment in schools)
+CREATE TABLE Student_School (
+    StudentSchoolID INT PRIMARY KEY IDENTITY(1,1),
+    StudentID INT NOT NULL,
+    SchoolID INT NOT NULL,
+    EnrollmentDate DATE NOT NULL,
+    FOREIGN KEY (StudentID) REFERENCES Students(StudentID),
+    FOREIGN KEY (SchoolID) REFERENCES Schools(SchoolID)
+);
+
+-- Student_Academic_History table (tracks academic history per grade)
+CREATE TABLE Student_Academic_History (
+    AcademicHistoryID INT PRIMARY KEY IDENTITY(1,1),
+    StudentSchoolID INT NOT NULL,
+    GradeID INT NOT NULL,
+    FromDate DATE NOT NULL,
+    ToDate DATE NOT NULL,
+    FOREIGN KEY (StudentSchoolID) REFERENCES Student_School(StudentSchoolID),
+    FOREIGN KEY (GradeID) REFERENCES Grades(GradeID)
+);
