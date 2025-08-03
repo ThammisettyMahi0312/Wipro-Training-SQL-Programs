@@ -1,0 +1,16 @@
+-- Declare date boundaries
+DECLARE @StartDate DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+DECLARE @EndDate DATE = EOMONTH(@StartDate);
+
+-- Generate and filter dates that are Fridays (weekday = 6 when DATEFIRST = 7)
+;WITH Dates AS (
+    SELECT @StartDate AS Dt
+    UNION ALL
+    SELECT DATEADD(DAY, 1, Dt)
+    FROM Dates
+    WHERE Dt < @EndDate
+)
+SELECT Dt AS Friday
+FROM Dates
+WHERE DATEPART(WEEKDAY, Dt) = 6  -- 6 = Friday when DATEFIRST = 7 (default)
+OPTION (MAXRECURSION 31);
