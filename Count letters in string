@@ -1,0 +1,6 @@
+DECLARE @word VARCHAR(100) = 'misissipi';
+
+-- Count occurrences of 'i' and 's'
+SELECT 
+    LEN(@word) - LEN(REPLACE(@word, 'i', '')) AS CountOfI,
+    LEN(@word) - LEN(REPLACE(@word, 's', '')) AS CountOfS;
