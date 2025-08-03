@@ -1,0 +1,88 @@
+-- Creating doctor master table
+CREATE TABLE doctor_master (
+    doctor_id VARCHAR(5) PRIMARY KEY,
+    doctor_name VARCHAR(215) NOT NULL,
+    dept VARCHAR(215) NOT NULL
+);
+
+
+-- Creating room master table
+CREATE TABLE room_master (
+    room_no VARCHAR(15) PRIMARY KEY,
+    room_type VARCHAR(215) NOT NULL,
+    status VARCHAR(215) NOT NULL
+);
+
+
+-- Creating patient master table
+CREATE TABLE patient_master (
+    pid VARCHAR(15) PRIMARY KEY,
+    name VARCHAR(215) NOT NULL,
+    age INT NOT NULL,
+    weight FLOAT NOT NULL,
+    gender VARCHAR(10) NOT NULL,
+    address VARCHAR(50) NOT NULL,
+    phoneno VARCHAR(10) NOT NULL,
+    disease VARCHAR(50) NOT NULL,
+    doctor_id VARCHAR(5),
+    FOREIGN KEY (doctor_id) REFERENCES doctor_master(doctor_id)
+);
+
+
+-- Creating room allocation table
+CREATE TABLE room_allocation (
+    room_no VARCHAR(15),
+    pid VARCHAR(15),
+    admission_date DATE NOT NULL,
+    release_date DATE,
+    FOREIGN KEY (room_no) REFERENCES room_master(room_no),
+    FOREIGN KEY (pid) REFERENCES patient_master(pid)
+);
+
+-- Q1. Patients admitted in January
+SELECT *
+FROM patient_master p
+JOIN room_allocation r ON p.pid = r.pid
+WHERE MONTH(r.admission_date) = 1;
+
+
+-- Q2. Female patients not having asthma
+SELECT *
+FROM patient_master
+WHERE gender = 'F' AND disease != 'Asthma';
+
+
+-- Q3. Count male and female patients
+SELECT gender, COUNT(*) AS total
+FROM patient_master
+GROUP BY gender;
+
+
+-- Q4. Patient and room info
+SELECT 
+    p.pid, p.name AS patient_name,
+    d.doctor_id, d.doctor_name,
+    r.room_no, rm.room_type,
+    r.admission_date
+FROM patient_master p
+JOIN doctor_master d ON p.doctor_id = d.doctor_id
+JOIN room_allocation r ON p.pid = r.pid
+JOIN room_master rm ON r.room_no = rm.room_no;
+
+
+-- Q5. Rooms never allocated
+SELECT room_no
+FROM room_master
+WHERE room_no NOT IN (
+    SELECT DISTINCT room_no FROM room_allocation
+);
+
+
+-- Q6. Rooms allocated more than once
+SELECT 
+    rm.room_no, rm.room_type,
+    COUNT(*) AS alloc_count
+FROM room_allocation r
+JOIN room_master rm ON r.room_no = rm.room_no
+GROUP BY rm.room_no, rm.room_type
+HAVING COUNT(*) > 1;
