@@ -1,0 +1,292 @@
+-- Declare variable for top N queries
+DECLARE @N INT = 5;
+
+-- 1. Employees paid VDA but NOT HRA
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    e.EmpName,
+    d.DesignationDesc,
+    st.ServiceTypeDesc,
+    ss.ServiceStatusDesc,
+    ISNULL(p.VDA, 0) AS VDA_Amount
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Designations d ON d.DesignationID = e.DesignationID
+JOIN ServiceTypes st ON st.ServiceTypeID = e.ServiceTypeID
+JOIN ServiceStatuses ss ON ss.ServiceStatusID = e.ServiceStatusID
+WHERE p.VDA IS NOT NULL AND p.HRA IS NULL;
+
+-- 2. Employees paid BOTH VDA and HRA
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    e.EmpName,
+    d.DesignationDesc,
+    st.ServiceTypeDesc,
+    ss.ServiceStatusDesc,
+    ISNULL(p.VDA, 0) AS VDA_Amount,
+    ISNULL(p.HRA, 0) AS HRA_Amount
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Designations d ON d.DesignationID = e.DesignationID
+JOIN ServiceTypes st ON st.ServiceTypeID = e.ServiceTypeID
+JOIN ServiceStatuses ss ON ss.ServiceStatusID = e.ServiceStatusID
+WHERE p.VDA IS NOT NULL AND p.HRA IS NOT NULL;
+
+-- 3. Employees paid VDA or HRA (or both)
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    e.EmpName,
+    d.DesignationDesc,
+    st.ServiceTypeDesc,
+    ss.ServiceStatusDesc,
+    ISNULL(p.VDA, 0) AS VDA_Amount,
+    ISNULL(p.HRA, 0) AS HRA_Amount
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Designations d ON d.DesignationID = e.DesignationID
+JOIN ServiceTypes st ON st.ServiceTypeID = e.ServiceTypeID
+JOIN ServiceStatuses ss ON ss.ServiceStatusID = e.ServiceStatusID
+WHERE p.VDA IS NOT NULL OR p.HRA IS NOT NULL;
+
+-- 4. Employees paid VDA, NHF, LWW but NOT PF
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    e.EmpName,
+    d.DesignationDesc,
+    st.ServiceTypeDesc,
+    ss.ServiceStatusDesc,
+    ISNULL(p.VDA, 0) AS VDA_Amount,
+    ISNULL(p.NHF, 0) AS NHF_Amount,
+    ISNULL(p.LWW, 0) AS LWW_Amount
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Designations d ON d.DesignationID = e.DesignationID
+JOIN ServiceTypes st ON st.ServiceTypeID = e.ServiceTypeID
+JOIN ServiceStatuses ss ON ss.ServiceStatusID = e.ServiceStatusID
+WHERE p.VDA IS NOT NULL 
+  AND p.NHF IS NOT NULL 
+  AND p.LWW IS NOT NULL 
+  AND p.PF IS NULL;
+
+-- 5. Employees not paid salary in any Payment Period
+SELECT DISTINCT
+    e.EmpNo,
+    e.EmpName,
+    st.ServiceTypeDesc
+FROM EmployeeMaster e
+LEFT JOIN EmployeePayments p ON e.EmpNo = p.EmpNo
+WHERE p.EmpNo IS NULL;
+
+-- 6. Display details with Gross Pay, Deductions, Net Pay, and breakdown
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    e.EmpName,
+    d.DesignationDesc,
+    st.ServiceTypeDesc,
+    ss.ServiceStatusDesc,
+    p.GrossPay,
+    p.Deductions,
+    p.NetPay,
+    ISNULL(p.BASIC, 0) AS BASIC,
+    ISNULL(p.VDA, 0) AS VDA,
+    ISNULL(p.HRA, 0) AS HRA,
+    ISNULL(p.OtherPerks, 0) AS OtherPerks,
+    ISNULL(p.PF, 0) AS PF,
+    ISNULL(p.OtherDeductions, 0) AS OtherDeductions
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Designations d ON d.DesignationID = e.DesignationID
+JOIN ServiceTypes st ON st.ServiceTypeID = e.ServiceTypeID
+JOIN ServiceStatuses ss ON ss.ServiceStatusID = e.ServiceStatusID;
+
+-- 7. Top N salaried employees based on BASIC (without TOP or RANK, use ORDER BY with OFFSET)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.BASIC
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+ORDER BY p.BASIC DESC
+OFFSET 0 ROWS FETCH NEXT @N ROWS ONLY;
+
+-- 8. Nth top salaried employee by BASIC (use OFFSET FETCH)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.BASIC
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+ORDER BY p.BASIC DESC
+OFFSET (@N - 1) ROWS FETCH NEXT 1 ROW ONLY;
+
+-- 9. Employees ranked between 8 and 15 by BASIC (OFFSET 7 ROWS FETCH NEXT 8 ROWS)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.BASIC
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+ORDER BY p.BASIC DESC
+OFFSET 7 ROWS FETCH NEXT 8 ROWS ONLY;
+
+-- 10. Departments with sum of gross salary > 30000 ordered by payment period and gross salary
+SELECT 
+    d.DepartmentName,
+    p.PayFromDate,
+    p.PayToDate,
+    SUM(p.GrossPay) AS TotalGrossSalary
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Departments d ON d.DepartmentID = e.DepartmentID
+GROUP BY d.DepartmentName, p.PayFromDate, p.PayToDate
+HAVING SUM(p.GrossPay) > 30000
+ORDER BY p.PayFromDate, TotalGrossSalary DESC;
+
+-- 11. Details of employees in department with gross pay > 30000 for any month
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    d.DepartmentName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.GrossPay
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Departments d ON d.DepartmentID = e.DepartmentID
+WHERE d.DepartmentName = 'YourDepartmentName' -- Replace as needed
+GROUP BY e.EmpNo, e.EmpName, d.DepartmentName, p.PayFromDate, p.PayToDate, p.GrossPay
+HAVING SUM(p.GrossPay) > 30000;
+
+-- 12. Employees where sum gross pay per department > 30000 and center aggregate > twice department aggregate for month
+WITH DeptAgg AS (
+    SELECT d.DepartmentID, p.PayFromDate, SUM(p.GrossPay) AS DeptGross
+    FROM EmployeePayments p
+    JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+    JOIN Departments d ON d.DepartmentID = e.DepartmentID
+    GROUP BY d.DepartmentID, p.PayFromDate
+),
+CenterAgg AS (
+    SELECT p.PayFromDate, SUM(p.GrossPay) AS CenterGross
+    FROM EmployeePayments p
+    GROUP BY p.PayFromDate
+)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    d.DepartmentName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.GrossPay
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN Departments d ON d.DepartmentID = e.DepartmentID
+JOIN DeptAgg da ON da.DepartmentID = d.DepartmentID AND da.PayFromDate = p.PayFromDate
+JOIN CenterAgg ca ON ca.PayFromDate = p.PayFromDate
+WHERE da.DeptGross > 30000
+  AND ca.CenterGross > 2 * da.DeptGross;
+
+-- 13. Full details for all pay periods
+SELECT 
+    e.EmpNo,
+    p.PayFromDate,
+    p.PayToDate,
+    p.GrossPay,
+    p.Deductions,
+    p.NetPay,
+    p.BASIC,
+    p.HRA,
+    p.DA,
+    p.VDA,
+    p.LWW,
+    p.ADMNAL,
+    p.CNV,
+    p.Bonus,
+    p.NHF,
+    p.PF,
+    p.ESI
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo;
+
+-- 14. Details for latest payment period with highest gross pay per employee
+WITH MaxGross AS (
+    SELECT EmpNo, MAX(GrossPay) AS MaxGrossPay
+    FROM EmployeePayments
+    GROUP BY EmpNo
+),
+LatestPay AS (
+    SELECT p.*
+    FROM EmployeePayments p
+    JOIN MaxGross mg ON p.EmpNo = mg.EmpNo AND p.GrossPay = mg.MaxGrossPay
+)
+SELECT 
+    e.EmpNo,
+    lp.PayFromDate,
+    lp.PayToDate,
+    lp.GrossPay,
+    lp.Deductions,
+    lp.NetPay,
+    lp.BASIC,
+    lp.HRA,
+    lp.DA,
+    lp.VDA,
+    lp.LWW,
+    lp.ADMNAL,
+    lp.CNV,
+    lp.Bonus,
+    lp.NHF,
+    lp.PF,
+    lp.ESI
+FROM LatestPay lp
+JOIN EmployeeMaster e ON e.EmpNo = lp.EmpNo;
+
+-- 15. Employees paid CNV but NOT ESI in their last monthly payment
+WITH LastPayment AS (
+    SELECT EmpNo, MAX(PayToDate) AS LastPayDate
+    FROM EmployeePayments
+    GROUP BY EmpNo
+)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.CNV,
+    p.ESI
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN LastPayment lp ON lp.EmpNo = p.EmpNo AND lp.LastPayDate = p.PayToDate
+WHERE p.CNV IS NOT NULL AND (p.ESI IS NULL OR p.ESI = 0);
+
+-- 16. Employees paid BOTH CNV and ESI in their last monthly payment
+WITH LastPayment AS (
+    SELECT EmpNo, MAX(PayToDate) AS LastPayDate
+    FROM EmployeePayments
+    GROUP BY EmpNo
+)
+SELECT 
+    e.EmpNo,
+    e.EmpName,
+    p.PayFromDate,
+    p.PayToDate,
+    p.CNV,
+    p.ESI
+FROM EmployeePayments p
+JOIN EmployeeMaster e ON e.EmpNo = p.EmpNo
+JOIN LastPayment lp ON lp.EmpNo = p.EmpNo AND lp.LastPayDate = p.PayToDate
+WHERE p.CNV IS NOT NULL AND p.ESI IS NOT NULL AND p.ESI > 0;
