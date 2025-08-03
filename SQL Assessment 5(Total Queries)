@@ -1,0 +1,154 @@
+-- DROP TABLES if they exist (for clean start)
+IF OBJECT_ID('dbo.tblemployees', 'U') IS NOT NULL DROP TABLE dbo.tblemployees;
+IF OBJECT_ID('dbo.Employees_2000_2005', 'U') IS NOT NULL DROP TABLE dbo.Employees_2000_2005;
+
+-- 1. Create tblemployees table with sample columns
+CREATE TABLE dbo.tblemployees (
+    EmpNo INT PRIMARY KEY,
+    EmpName VARCHAR(100),
+    DOJ DATE,
+    DOB DATE,
+    PresentBasic DECIMAL(18,2),
+    Level INT
+);
+
+-- Insert sample data into tblemployees
+INSERT INTO dbo.tblemployees (EmpNo, EmpName, DOJ, DOB, PresentBasic, Level)
+VALUES
+(101, 'Alice', '2010-05-10', '1985-02-20', 50000, 1),
+(102, 'Bob', '2012-07-23', '1988-08-15', 40000, 2),
+(103, 'Charlie', '2015-01-30', '1990-10-05', 35000, 3),
+(104, 'David', '2018-03-14', '1992-12-11', 30000, 4),
+(105, 'Eve', '2020-11-01', '1995-06-25', 25000, 5);
+
+-- 2. Create Employees_2000_2005 table for manager hierarchy
+CREATE TABLE dbo.Employees_2000_2005 (
+    EmpNo INT PRIMARY KEY,
+    EmpName VARCHAR(100),
+    ManagerEmpNo INT NULL -- FK to EmpNo, NULL means top-level manager
+);
+
+-- Insert sample data
+INSERT INTO dbo.Employees_2000_2005 (EmpNo, EmpName, ManagerEmpNo)
+VALUES
+(101, 'Alice', NULL),
+(102, 'Bob', 101),
+(103, 'Charlie', 102),
+(104, 'David', 102),
+(105, 'Eve', 104);
+
+--------------------------------------------------------
+-- Now your original Exercise_5 queries
+
+-- 1. Pagination query for employees sorted by EmpNo
+DECLARE @PageSize INT = 2;
+DECLARE @PageNumber INT = 1;
+
+SELECT EmpNo, EmpName, DOJ, DOB
+FROM dbo.tblemployees
+ORDER BY EmpNo
+OFFSET (@PageNumber - 1) * @PageSize ROWS
+FETCH NEXT @PageSize ROWS ONLY;
+
+--------------------------------------------------------
+-- 2. Calculate VDA hike based on Present Basic and Level
+
+WITH LevelRanks AS (
+    SELECT EmpNo, PresentBasic, Level,
+        ROW_NUMBER() OVER (ORDER BY Level ASC) AS LevelRank
+    FROM dbo.tblemployees
+),
+VDAHike AS (
+    -- Anchor member
+    SELECT EmpNo, PresentBasic, Level,
+           CAST(PresentBasic * 0.10 AS DECIMAL(18,2)) AS Hike,
+           LevelRank
+    FROM LevelRanks
+    WHERE LevelRank = 1
+
+    UNION ALL
+
+    -- Recursive member with explicit cast on Hike calculation
+    SELECT e.EmpNo, e.PresentBasic, e.Level,
+           CAST(v.Hike + ((10 + (e.Level - 1)) * 0.01) * (v.PresentBasic - e.PresentBasic) AS DECIMAL(18,2)) AS Hike,
+           e.LevelRank
+    FROM LevelRanks e
+    JOIN VDAHike v ON e.LevelRank = v.LevelRank + 1
+)
+SELECT EmpNo, PresentBasic, Level, Hike AS Calculated_VDA_Hike
+FROM VDAHike
+ORDER BY Level;
+
+--------------------------------------------------------
+-- 3. Top N employees based on PresentBasic
+
+DECLARE @N INT = 3;
+
+SELECT TOP (@N)
+    EmpNo, EmpName, PresentBasic,
+    RANK() OVER (ORDER BY PresentBasic DESC) AS RankPosition
+FROM dbo.tblemployees
+ORDER BY PresentBasic DESC;
+
+--------------------------------------------------------
+-- 4. Nth top employee based on PresentBasic
+
+DECLARE @Nth INT = 3;
+
+SELECT EmpNo, EmpName, PresentBasic
+FROM dbo.tblemployees
+ORDER BY PresentBasic DESC
+OFFSET (@Nth - 1) ROWS FETCH NEXT 1 ROW ONLY;
+
+--------------------------------------------------------
+-- 5. Employees working under each Employee (Manager-Emp mapping)
+
+SELECT 
+    Manager.EmpNo AS ManagerEmpNo,
+    Manager.EmpName AS ManagerName,
+    Emp.EmpNo AS EmployeeEmpNo,
+    Emp.EmpName AS EmployeeName
+FROM dbo.Employees_2000_2005 Emp
+LEFT JOIN dbo.Employees_2000_2005 Manager ON Emp.ManagerEmpNo = Manager.EmpNo
+ORDER BY Manager.EmpNo, Emp.EmpNo;
+
+--------------------------------------------------------
+-- 6. Employee hierarchy showing up to 4 manager levels
+
+WITH EmployeeHierarchy AS (
+    SELECT 
+        EmpNo,
+        EmpName,
+        ManagerEmpNo,
+        1 AS Level,
+        CAST(NULL AS VARCHAR(100)) AS Level1Manager,
+        CAST(NULL AS VARCHAR(100)) AS Level2Manager,
+        CAST(NULL AS VARCHAR(100)) AS Level3Manager,
+        CAST(NULL AS VARCHAR(100)) AS Level4Manager
+    FROM dbo.Employees_2000_2005
+    WHERE ManagerEmpNo IS NULL
+
+    UNION ALL
+
+    SELECT 
+        e.EmpNo,
+        e.EmpName,
+        e.ManagerEmpNo,
+        eh.Level + 1,
+        CASE WHEN eh.Level = 1 THEN eh.EmpName ELSE eh.Level1Manager END,
+        CASE WHEN eh.Level = 2 THEN eh.EmpName ELSE eh.Level2Manager END,
+        CASE WHEN eh.Level = 3 THEN eh.EmpName ELSE eh.Level3Manager END,
+        CASE WHEN eh.Level = 4 THEN eh.EmpName ELSE eh.Level4Manager END
+    FROM dbo.Employees_2000_2005 e
+    INNER JOIN EmployeeHierarchy eh ON e.ManagerEmpNo = eh.EmpNo
+)
+SELECT 
+    EmpNo,
+    EmpName,
+    Level,
+    Level1Manager,
+    Level2Manager,
+    Level3Manager,
+    Level4Manager
+FROM EmployeeHierarchy
+ORDER BY EmpNo;
