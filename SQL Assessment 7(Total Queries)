@@ -1,0 +1,175 @@
+-- 1. CalculateBonus Procedure
+CREATE OR ALTER PROCEDURE CalculateBonus
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 
+        [EmployeeID],
+        [EmployeeName],
+        [BasicSalary],
+        [ServiceType],
+        CASE 
+            WHEN [ServiceType] IN ('Checker', 'Regular') THEN
+                CASE 
+                    WHEN [BasicSalary] BETWEEN 0 AND 60000 THEN [BasicSalary] * 0.15
+                    WHEN [BasicSalary] BETWEEN 60001 AND 100000 THEN
+                        CASE 
+                            WHEN [BasicSalary] * 0.12 < 9000 THEN 9000
+                            WHEN [BasicSalary] * 0.12 > 13800 THEN 13800
+                            ELSE [BasicSalary] * 0.12
+                        END
+                    WHEN [BasicSalary] > 100000 THEN
+                        CASE
+                            WHEN [BasicSalary] * 0.08 < 13800 THEN 13800
+                            ELSE [BasicSalary] * 0.08
+                        END
+                END
+            WHEN [ServiceType] IN ('Rollers', 'Packers') THEN [BasicSalary] * 0.12
+            ELSE 0
+        END AS Bonus
+    FROM [tblEmployees];
+END;
+GO
+
+-- 2. CalculateSalary Procedure
+CREATE OR ALTER PROCEDURE CalculateSalary
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        [EmployeeID],
+        [EmployeeName],
+        [Location],
+        [BasicSalary],
+
+        -- VDA calculation: 200 + 6% of Basic, capped at 10000
+        CASE 
+            WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000
+            ELSE 200 + [BasicSalary] * 0.06
+        END AS VDA,
+
+        -- HRA calculation by location, includes VDA
+        CASE 
+            WHEN [Location] = 'Hyderabad' THEN [BasicSalary] * 0.40 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            WHEN [Location] = 'Nizamabad' THEN [BasicSalary] * 0.25 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            ELSE [BasicSalary] * 0.15 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+        END AS HRA,
+
+        -- Conveyance 4% Basic, capped at 800
+        CASE 
+            WHEN [BasicSalary] * 0.04 > 800 THEN 800
+            ELSE [BasicSalary] * 0.04
+        END AS Conveyance,
+
+        -- Gross Pay = Basic + VDA + HRA + Conveyance
+        [BasicSalary] 
+        + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+        + CASE 
+            WHEN [Location] = 'Hyderabad' THEN [BasicSalary] * 0.40 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            WHEN [Location] = 'Nizamabad' THEN [BasicSalary] * 0.25 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            ELSE [BasicSalary] * 0.15 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+          END
+        + CASE WHEN [BasicSalary] * 0.04 > 800 THEN 800 ELSE [BasicSalary] * 0.04 END AS GrossPay,
+
+        -- PF calculation: Confirmed=1 and Age<58, 10% Basic max 6500
+        CASE 
+            WHEN [Confirmed] = 1 AND [Age] < 58 THEN
+                CASE WHEN [BasicSalary] * 0.10 > 6500 THEN 6500 ELSE [BasicSalary] * 0.10 END
+            ELSE 0
+        END AS PF,
+
+        -- Deductions same as PF for now
+        CASE 
+            WHEN [Confirmed] = 1 AND [Age] < 58 THEN
+                CASE WHEN [BasicSalary] * 0.10 > 6500 THEN 6500 ELSE [BasicSalary] * 0.10 END
+            ELSE 0
+        END AS Deductions,
+
+        -- Net Pay = Gross Pay - Deductions
+        ([BasicSalary] 
+        + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+        + CASE 
+            WHEN [Location] = 'Hyderabad' THEN [BasicSalary] * 0.40 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            WHEN [Location] = 'Nizamabad' THEN [BasicSalary] * 0.25 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+            ELSE [BasicSalary] * 0.15 + CASE WHEN 200 + [BasicSalary] * 0.06 > 10000 THEN 10000 ELSE 200 + [BasicSalary] * 0.06 END
+          END
+        + CASE WHEN [BasicSalary] * 0.04 > 800 THEN 800 ELSE [BasicSalary] * 0.04 END)
+        - CASE 
+            WHEN [Confirmed] = 1 AND [Age] < 58 THEN
+                CASE WHEN [BasicSalary] * 0.10 > 6500 THEN 6500 ELSE [BasicSalary] * 0.10 END
+            ELSE 0
+          END AS NetPay
+
+    FROM [tblEmployees];
+END;
+GO
+
+-- 3. TDS Slabs table - create if not exists
+IF OBJECT_ID('dbo.TDSSlabs', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TDSSlabs (
+        LowerLimit DECIMAL(18,2),
+        UpperLimit DECIMAL(18,2),
+        TaxRatePercent INT
+    );
+
+    INSERT INTO dbo.TDSSlabs VALUES
+    (0, 40000, 0),
+    (40001, 100000, 10),
+    (100001, 200000, 20),
+    (200001, 999999999, 30);
+END;
+GO
+
+-- 4. CalculateTDS Procedure
+CREATE OR ALTER PROCEDURE CalculateTDS
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH SalaryWithBonus AS (
+        SELECT 
+            e.[EmployeeID],
+            e.[EmployeeName],
+            e.[BasicSalary],
+            -- For demo, Bonus calculation reused here:
+            CASE 
+                WHEN e.[ServiceType] IN ('Checker', 'Regular') THEN
+                    CASE 
+                        WHEN e.[BasicSalary] BETWEEN 0 AND 60000 THEN e.[BasicSalary] * 0.15
+                        WHEN e.[BasicSalary] BETWEEN 60001 AND 100000 THEN
+                            CASE 
+                                WHEN e.[BasicSalary] * 0.12 < 9000 THEN 9000
+                                WHEN e.[BasicSalary] * 0.12 > 13800 THEN 13800
+                                ELSE e.[BasicSalary] * 0.12
+                            END
+                        WHEN e.[BasicSalary] > 100000 THEN
+                            CASE
+                                WHEN e.[BasicSalary] * 0.08 < 13800 THEN 13800
+                                ELSE e.[BasicSalary] * 0.08
+                            END
+                    END
+                WHEN e.[ServiceType] IN ('Rollers', 'Packers') THEN e.[BasicSalary] * 0.12
+                ELSE 0
+            END AS Bonus
+        FROM [tblEmployees] e
+    )
+
+    SELECT
+        sb.[EmployeeID],
+        sb.[EmployeeName],
+        sb.[BasicSalary],
+        sb.Bonus,
+        -- Total taxable income = BasicSalary + Bonus (assumption)
+        TaxableIncome = sb.[BasicSalary] + sb.Bonus,
+        -- Get tax slab rate
+        ts.TaxRatePercent,
+        -- Calculate TDS = TaxableIncome * TaxRate / 100
+        TDS = ((sb.[BasicSalary] + sb.Bonus) * ts.TaxRatePercent / 100.0)
+    FROM SalaryWithBonus sb
+    INNER JOIN dbo.TDSSlabs ts
+      ON sb.[BasicSalary] + sb.Bonus BETWEEN ts.LowerLimit AND ts.UpperLimit
+END;
+GO
