@@ -1,0 +1,2 @@
+-- Get the first day of the previous month
+SELECT DATEADD(DAY, 1, EOMONTH(GETDATE(), -2)) AS FirstDayOfPreviousMonth;
